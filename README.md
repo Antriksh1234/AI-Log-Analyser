@@ -45,23 +45,7 @@ The application uses OpenSearch as a persistent vector database and Ollama for f
 
 # Architecture
 
-```text
-Log File
-   ↓
-Log Parsing & Grouping
-   ↓
-SentenceTransformer Embeddings
-   ↓
-OpenSearch Vector Index
-   ↓
-kNN Semantic Retrieval
-   ↓
-Context Retrieval
-   ↓
-Mistral (Ollama)
-   ↓
-AI Analysis Response
-```
+![AI Log Analyzer Architecture](assets/AI-Analyser-Arch-Diagram.png)
 
 ---
 
