@@ -144,18 +144,34 @@ def load_logs():
         )
 
         if service not in service_groups:
-            service_groups[service] = []
 
-        service_groups[service].append(
+            service_groups[service] = {
+                "logs": [],
+                "severity": log["severity"]
+            }
+
+        service_groups[service]["logs"].append(
             formatted_message
         )
+
+        # Update highest severity
+        if log["severity"] == "ERROR":
+            service_groups[service]["severity"] = "ERROR"
+
+        elif (
+            log["severity"] == "WARN"
+            and service_groups[service]["severity"] != "ERROR"
+        ):
+            service_groups[service]["severity"] = "WARN"
 
     # Create service-level incident chunks
     chunks = []
 
-    for service, logs in service_groups.items():
+    for service, data in service_groups.items():
 
-        combined_logs = "\n".join(logs)
+        combined_logs = "\n".join(
+            data["logs"]
+        )
 
         incident_text = (
             f"Service: {service}\n\n{combined_logs}"
@@ -163,6 +179,7 @@ def load_logs():
 
         chunks.append({
             "service": service,
+            "severity": data["severity"],
             "incident": incident_text
         })
 
@@ -173,6 +190,7 @@ def load_logs():
             "incident": chunk_data["incident"],
             "metadata": {
                 "service": chunk_data["service"],
+                "severity": chunk_data["severity"],
                 "source": "app.log"
             }
         })
@@ -192,7 +210,11 @@ def load_logs():
 
 # Search logs
 @app.get("/search")
-def search(query: str):
+def search(
+    query: str,
+    service: str = None,
+    severity: str = None
+):
 
     query_embedding = model.encode(query)
 
@@ -202,6 +224,20 @@ def search(query: str):
         incident_db,
         embeddings_db
     ):
+        
+        if service:
+            if (
+                incident["metadata"]["service"]
+                != service
+            ):
+                continue
+
+        if severity:
+            if (
+                incident["metadata"]["severity"]
+                != severity
+            ):
+                continue
 
         semantic_score = cosine_similarity(
             query_embedding,
