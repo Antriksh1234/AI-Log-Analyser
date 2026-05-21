@@ -4,3 +4,6 @@ sentence-transformers
 numpy
 requests
 torch
+pydantic
+opensearch-py
+python-dotenv
