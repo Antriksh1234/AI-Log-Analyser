@@ -1,26 +1,32 @@
 # AI Log Analyzer
 
-An AI-powered log analysis and semantic incident search application built using FastAPI, Sentence Transformers, and Ollama.
+An AI-powered log analysis and semantic incident retrieval platform built using FastAPI, Sentence Transformers, OpenSearch, and Ollama.
 
 This project allows engineers to:
-- Ingest application logs
-- Clean and preprocess logs
+- Ingest and preprocess application logs
 - Generate semantic embeddings
-- Perform vector-based incident retrieval
+- Persist embeddings inside OpenSearch
+- Perform kNN vector-based incident retrieval
+- Apply metadata-based filtering
 - Ask natural language questions about failures and incidents using a local LLM
+
+The application uses OpenSearch as a persistent vector database and Ollama for fully local LLM inference.
 
 ---
 
 # Features
 
 - Semantic log search
+- OpenSearch vector indexing
+- Persistent semantic retrieval
+- kNN vector search
+- Metadata-based filtering
 - AI-powered incident analysis
 - Local LLM inference using Ollama
 - FastAPI REST APIs
-- Log preprocessing and cleaning
-- Incident chunking
-- Vector similarity search
+- Log preprocessing and grouping
 - Fully local execution
+- Stateless backend architecture
 
 ---
 
@@ -29,6 +35,8 @@ This project allows engineers to:
 - Python
 - FastAPI
 - Sentence Transformers
+- OpenSearch
+- Docker
 - Ollama
 - Mistral
 - NumPy
@@ -40,13 +48,13 @@ This project allows engineers to:
 ```text
 Log File
    ↓
-Preprocessing
+Log Parsing & Grouping
    ↓
-Incident Chunking
+SentenceTransformer Embeddings
    ↓
-Embeddings
+OpenSearch Vector Index
    ↓
-Vector Search
+kNN Semantic Retrieval
    ↓
 Context Retrieval
    ↓
@@ -71,7 +79,19 @@ python3 --version
 
 ---
 
-## 2. Ollama
+## 2. Docker Desktop
+
+Install Docker Desktop and ensure Docker is running locally.
+
+Verify:
+
+```bash
+docker --version
+```
+
+---
+
+## 3. Ollama
 
 Install Ollama from:
 
@@ -85,7 +105,7 @@ ollama --version
 
 ---
 
-## 3. Pull Mistral Model
+## 4. Pull Mistral Model
 
 Run:
 
@@ -103,30 +123,36 @@ Clone repository:
 
 ```bash
 git clone https://github.com/Antriksh1234/AI-Log-Analyser.git
-cd ai-log-analyzer
+cd AI-Log-Analyser
 ```
 
-Create virtual environment:
+---
+
+## Create Virtual Environment
 
 ```bash
 python3 -m venv .venv
 ```
 
-Activate virtual environment:
+---
 
-## macOS/Linux
+## Activate Virtual Environment
+
+### macOS/Linux
 
 ```bash
 source .venv/bin/activate
 ```
 
-## Windows
+### Windows
 
 ```bash
 .venv\Scripts\activate
 ```
 
-Install dependencies:
+---
+
+## Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -134,17 +160,47 @@ pip install -r requirements.txt
 
 ---
 
+# Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+OPENSEARCH_USERNAME=admin
+OPENSEARCH_PASSWORD=your_password
+```
+
+---
+
 # Project Structure
 
 ```text
-ai-log-analyzer/
+AI-Log-Analyser/
+│
+├── app/
+│   │
+│   ├── main.py
+│   │
+│   ├── models/
+│   │   └── incident.py
+│   │
+│   ├── parsers/
+│   │   └── log_parser.py
+│   │
+│   ├── services/
+│   │   ├── llm_service.py
+│   │   ├── retrieval_service.py
+│   │   └── opensearch_service.py
+│   │
+│   └── utils/
+│       └── similarity.py
 │
 ├── logs/
 │   └── app.log
 │
-├── main.py
+├── docker-compose.yml
 ├── requirements.txt
 ├── README.md
+├── .env
 └── .gitignore
 ```
 
@@ -152,9 +208,19 @@ ai-log-analyzer/
 
 # Running The Application
 
-## Step 1 — Start Ollama
+## Step 1 — Start OpenSearch
 
-In Terminal 1:
+```bash
+docker compose up
+```
+
+Keep it running.
+
+---
+
+## Step 2 — Start Ollama
+
+In another terminal:
 
 ```bash
 ollama run mistral
@@ -164,17 +230,17 @@ Keep it running.
 
 ---
 
-## Step 2 — Start FastAPI
+## Step 3 — Start FastAPI
 
-In Terminal 2:
+In another terminal:
 
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 ---
 
-## Step 3 — Open Swagger UI
+## Step 4 — Open Swagger UI
 
 Open:
 
@@ -210,12 +276,11 @@ Run:
 POST /load-logs
 ```
 
-This:
+This endpoint:
 - reads logs
-- preprocesses lines
-- groups incidents
+- parses and groups incidents
 - generates embeddings
-- indexes logs
+- indexes incidents into OpenSearch
 
 ---
 
@@ -227,10 +292,20 @@ Endpoint:
 GET /search
 ```
 
-Example query:
+Example:
 
 ```text
-database timeout
+/search?query=database timeout
+```
+
+Example with filters:
+
+```text
+/search?query=redis failure&service=payment-service
+```
+
+```text
+/search?query=timeout&severity=ERROR
 ```
 
 ---
@@ -246,11 +321,11 @@ GET /ask
 Example:
 
 ```text
-Why are requests failing?
+/ask?query=Why are requests failing?
 ```
 
 The application:
-1. Retrieves relevant incidents
+1. Retrieves semantically relevant incidents
 2. Sends context to Mistral
 3. Generates AI-powered analysis
 
@@ -259,33 +334,37 @@ The application:
 # Example Questions
 
 - Why are requests failing?
-- What database issues occurred?
-- Why did retries happen?
 - Which service is timing out?
-- What errors are occurring frequently?
+- What Redis issues occurred?
+- What database failures happened?
+- Which services have ERROR logs?
+- Why are retries happening?
+- What incidents are affecting payment-service?
 
 ---
 
 # Notes
 
 - This is a learning-focused MVP implementation.
-- Retrieval quality depends heavily on log preprocessing and chunking strategy.
+- Retrieval quality heavily depends on log grouping strategy and embedding quality.
 - LLM responses may still hallucinate or infer incorrect conclusions.
-- Better incident grouping and hybrid search can significantly improve accuracy.
+- Better chunking and reranking can significantly improve accuracy.
+- OpenSearch is used as the persistent vector database.
 
 ---
 
 # Future Improvements
 
-- Request ID based grouping
-- Time-window chunking
-- FAISS / Elasticsearch vector search
+- BM25 + vector hybrid ranking
+- OpenSearch Dashboards integration
 - Real-time streaming ingestion
 - CloudWatch / Splunk integration
+- Request ID based incident grouping
 - Root cause clustering
-- Hybrid keyword + vector search
-- Observability dashboards
+- Reranking models
+- Multi-index retrieval
 - Streaming AI responses
+- Frontend observability dashboard
 
 ---
 
