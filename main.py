@@ -20,6 +20,21 @@ def cosine_similarity(vec1, vec2):
         np.linalg.norm(vec1) * np.linalg.norm(vec2)
     )
 
+def calculate_keyword_score(query, text):
+
+    score = 0
+
+    query_words = query.lower().split()
+
+    text = text.lower()
+
+    for word in query_words:
+
+        if word in text:
+            score += 0.1
+
+    return score
+
 # Clean noisy logs
 def clean_log(line):
 
@@ -32,20 +47,39 @@ def clean_log(line):
 
     return line.strip()
 
+def parse_log(line):
+
+    parts = line.split()
+
+    if len(parts) < 5:
+        return None
+
+    severity = parts[2]
+    service = parts[3]
+
+    message = " ".join(parts[4:])
+
+    return {
+        "severity": severity,
+        "service": service,
+        "message": message
+    }
+
 # Group logs into chunks
-def chunk_logs(lines, chunk_size=5):
+# Removing since this is fixed size chunking
+# def chunk_logs(lines, chunk_size=5):
 
-    chunks = []
+#     chunks = []
 
-    for i in range(0, len(lines), chunk_size):
+#     for i in range(0, len(lines), chunk_size):
 
-        chunk = lines[i:i+chunk_size]
+#         chunk = lines[i:i+chunk_size]
 
-        combined = "\n".join(chunk)
+#         combined = "\n".join(chunk)
 
-        chunks.append(combined)
+#         chunks.append(combined)
 
-    return chunks
+#     return chunks
 
 # Ollama call
 def ask_mistral(prompt):
@@ -84,34 +118,77 @@ def load_logs():
 
         raw_lines = file.readlines()
 
-    # Clean logs
-    cleaned_lines = []
+    # Parse logs
+    parsed_logs = []
 
     for line in raw_lines:
 
         line = line.strip()
 
         if line:
-            cleaned_lines.append(
-                clean_log(line)
-            )
 
-    # Create incident chunks
-    chunks = chunk_logs(cleaned_lines)
+            parsed = parse_log(line)
+
+            if parsed:
+                parsed_logs.append(parsed)
+
+    # Group logs by service
+    service_groups = {}
+
+    for log in parsed_logs:
+
+        service = log["service"]
+
+        formatted_message = (
+            f'{log["severity"]} {log["message"]}'
+        )
+
+        if service not in service_groups:
+            service_groups[service] = []
+
+        service_groups[service].append(
+            formatted_message
+        )
+
+    # Create service-level incident chunks
+    chunks = []
+
+    for service, logs in service_groups.items():
+
+        combined_logs = "\n".join(logs)
+
+        incident_text = (
+            f"Service: {service}\n\n{combined_logs}"
+        )
+
+        chunks.append({
+            "service": service,
+            "incident": incident_text
+        })
 
     # Generate embeddings
-    for chunk in chunks:
+    for chunk_data in chunks:
 
-        incident_db.append(chunk)
+        incident_db.append({
+            "incident": chunk_data["incident"],
+            "metadata": {
+                "service": chunk_data["service"],
+                "source": "app.log"
+            }
+        })
 
-        embedding = model.encode(chunk)
+        embedding = model.encode(
+            chunk_data["incident"]
+        )
 
         embeddings_db.append(embedding)
 
     return {
         "message": "Logs indexed successfully",
-        "incident_chunks": len(chunks)
+        "services_indexed": len(chunks)
     }
+
+
 
 # Search logs
 @app.get("/search")
@@ -121,23 +198,31 @@ def search(query: str):
 
     results = []
 
-    for chunk, embedding in zip(
+    for incident, embedding in zip(
         incident_db,
         embeddings_db
     ):
 
-        score = cosine_similarity(
+        semantic_score = cosine_similarity(
             query_embedding,
             embedding
         )
 
+        keyword_score = calculate_keyword_score(
+            query,
+            incident["incident"]
+        )
+
+        final_score = semantic_score + keyword_score
+
         results.append({
-            "incident": chunk,
-            "score": float(score)
+            "incident": incident["incident"],
+            "metadata": incident["metadata"],
+            "final_score": float(final_score)
         })
 
     results.sort(
-        key=lambda x: x["score"],
+        key=lambda x: x["final_score"],
         reverse=True
     )
 
@@ -151,29 +236,38 @@ def ask(query: str):
 
     results = []
 
-    for chunk, embedding in zip(
+    for incident, embedding in zip(
         incident_db,
         embeddings_db
     ):
 
-        score = cosine_similarity(
+        semantic_score = cosine_similarity(
             query_embedding,
             embedding
         )
 
-        if score > 0.2:
+        keyword_score = calculate_keyword_score(
+            query,
+            incident["incident"]
+        )
 
+        final_score = semantic_score + keyword_score
+
+        if final_score > 0.2:
             results.append({
-                "incident": chunk,
-                "score": float(score)
+                "incident": incident["incident"],
+                "metadata": incident["metadata"],
+                "semantic_score": float(semantic_score),
+                "keyword_score": float(keyword_score),
+                "final_score": float(final_score)
             })
 
     results.sort(
-        key=lambda x: x["score"],
+        key=lambda x: x["final_score"],
         reverse=True
     )
 
-    top_chunks = results[:3]
+    top_chunks = results[:5]
 
     context = "\n\n".join(
         [
